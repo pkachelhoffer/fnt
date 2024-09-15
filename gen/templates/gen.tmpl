@@ -1,0 +1,18 @@
+package {{.Spec.PackageName}}
+
+import (
+{{ range .Imports }}
+    {{ if .Alias }}{{ if ne .Alias .ImportName }}{{ .Alias }} {{ end }}{{ end }} "{{ .Import }}"
+{{ end }}
+)
+
+type (
+{{range .Spec.Functions}}
+    {{ .Name}} func (
+        {{- range .Params}}
+           {{- if .ImportName}}{{- .ImportName}}.{{end}}{{- .Type}},
+        {{- end }}) ({{- range .Returns}}
+           {{- if .ImportName}}{{- .ImportName}}.{{end}}{{- .Type}},
+        {{- end }})
+{{- end}}
+)
