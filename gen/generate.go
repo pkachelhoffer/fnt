@@ -10,19 +10,19 @@ import (
 	"text/template"
 )
 
-//go:embed templates/gen.tmpl
-var genTmplText string
-
 var (
+	//go:embed templates/gen.tmpl
+	genTmplText string
+
 	weldTpl = template.Must(template.New("").Parse(genTmplText))
 )
 
 type tmplData struct {
-	Spec    Spec
-	Imports []ImportAlias
+	Spec    spec
+	Imports []importAlias
 }
 
-func GenerateFile(spec Spec, it ImportTracker, target string) error {
+func generateFile(spec spec, it importTracker, target string) error {
 	data := tmplData{
 		Spec:    spec,
 		Imports: it.GetImportList(),
@@ -31,19 +31,33 @@ func GenerateFile(spec Spec, it ImportTracker, target string) error {
 	var buf bytes.Buffer
 	err := weldTpl.Execute(&buf, data)
 	if err != nil {
-		return fmt.Errorf("error executing template: %s", err.Error())
+		return fmt.Errorf("executing template: %s", err.Error())
 	}
 
 	imports.LocalPrefix = spec.Package
 	src, err := imports.Process(target, buf.Bytes(), nil)
 	if err != nil {
-		log.Print(fmt.Errorf("failed processing imports"))
+		log.Print(fmt.Errorf("processing imports"))
 		src = buf.Bytes()
 	}
 
 	err = os.WriteFile(target, src, 0o644)
 	if err != nil {
-		return fmt.Errorf("error writing file: %s", err.Error())
+		return fmt.Errorf("writing file: %s", err.Error())
+	}
+
+	return nil
+}
+
+func PerformTypeGeneration(path string, interfaceName string, targetPackageName string, outputFile string) error {
+	spec, iTracker, err := getInterfaceSpec(path, interfaceName, targetPackageName)
+	if err != nil {
+		return fmt.Errorf("getting interface spec: %s", err)
+	}
+
+	err = generateFile(spec, iTracker, outputFile)
+	if err != nil {
+		return fmt.Errorf("generating file: %s", err)
 	}
 
 	return nil

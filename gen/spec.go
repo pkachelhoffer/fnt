@@ -7,33 +7,33 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-type Spec struct {
+type spec struct {
 	Name        string
-	Functions   []SpecFunction
+	Functions   []specFunction
 	Package     string
 	PackageName string
 }
 
-type SpecFunction struct {
+type specFunction struct {
 	Name    string
-	Params  []SpecParam
-	Returns []SpecParam
+	Params  []specParam
+	Returns []specParam
 }
 
-type SpecParam struct {
+type specParam struct {
 	Type       string
 	Import     string
 	ImportName string
 }
 
-func GetInterfaceSpec(path string, interfaceName string, targetPackageName string) (Spec, ImportTracker, error) {
+func getInterfaceSpec(path string, interfaceName string, targetPackageName string) (spec, importTracker, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:  path,
 	}
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
-		return Spec{}, ImportTracker{}, fmt.Errorf("error loading package: %s", err)
+		return spec{}, importTracker{}, fmt.Errorf("error loading package: %s", err)
 	}
 
 	for _, pkg := range pkgs {
@@ -44,8 +44,8 @@ func GetInterfaceSpec(path string, interfaceName string, targetPackageName strin
 					continue
 				}
 
-				for _, spec := range gd.Specs {
-					typeSpec, ok := spec.(*ast.TypeSpec)
+				for _, specDecl := range gd.Specs {
+					typeSpec, ok := specDecl.(*ast.TypeSpec)
 					if !ok {
 						continue
 					}
@@ -60,7 +60,7 @@ func GetInterfaceSpec(path string, interfaceName string, targetPackageName strin
 					}
 
 					var (
-						intSpec Spec
+						intSpec spec
 					)
 
 					intSpec.Name = typeSpec.Name.Name
@@ -77,7 +77,7 @@ func GetInterfaceSpec(path string, interfaceName string, targetPackageName strin
 
 						sf, err := processFunction(pkg, m, iTracker)
 						if err != nil {
-							return Spec{}, ImportTracker{}, err
+							return spec{}, importTracker{}, err
 						}
 
 						intSpec.Functions = append(intSpec.Functions, sf)
@@ -89,16 +89,16 @@ func GetInterfaceSpec(path string, interfaceName string, targetPackageName strin
 		}
 	}
 
-	return Spec{}, ImportTracker{}, fmt.Errorf("invalid interface specified or not found: %s", interfaceName)
+	return spec{}, importTracker{}, fmt.Errorf("invalid interface specified or not found: %s", interfaceName)
 }
 
-func processFunction(pkg *packages.Package, field *ast.Field, iTracker *ImportTracker) (SpecFunction, error) {
+func processFunction(pkg *packages.Package, field *ast.Field, iTracker *importTracker) (specFunction, error) {
 	fnc, ok := field.Type.(*ast.FuncType)
 	if !ok {
-		return SpecFunction{}, fmt.Errorf("unexpected field type: %s", field.Type)
+		return specFunction{}, fmt.Errorf("unexpected field type: %s", field.Type)
 	}
 
-	sf := SpecFunction{
+	sf := specFunction{
 		Name: field.Names[0].Name,
 	}
 
@@ -106,12 +106,12 @@ func processFunction(pkg *packages.Package, field *ast.Field, iTracker *ImportTr
 	for _, p := range fnc.Params.List {
 		ident, ok := getIdent(p)
 		if !ok {
-			continue
+			return specFunction{}, fmt.Errorf("failed getting type identity: %s", p.Type)
 		}
 
 		sp, err := processParameter(pkg, ident, iTracker)
 		if err != nil {
-			return SpecFunction{}, err
+			return specFunction{}, err
 		}
 
 		sf.Params = append(sf.Params, sp)
@@ -122,12 +122,12 @@ func processFunction(pkg *packages.Package, field *ast.Field, iTracker *ImportTr
 		for _, p := range fnc.Results.List {
 			ident, ok := getIdent(p)
 			if !ok {
-				continue
+				return specFunction{}, fmt.Errorf("failed getting type identity: %s", p.Type)
 			}
 
 			ret, err := processParameter(pkg, ident, iTracker)
 			if err != nil {
-				return SpecFunction{}, err
+				return specFunction{}, err
 			}
 
 			sf.Returns = append(sf.Returns, ret)
@@ -143,45 +143,43 @@ func getIdent(field *ast.Field) (*ast.Ident, bool) {
 		return tpe, true
 	case ast.Expr:
 		exp, ok := tpe.(*ast.SelectorExpr)
-		if !ok {
-			fmt.Println("nope")
-		} else {
+		if ok {
 			return exp.Sel, true
 		}
 	}
 	return nil, false
 }
 
-func processParameter(pkg *packages.Package, param *ast.Ident, iTracker *ImportTracker) (SpecParam, error) {
-	var specParam SpecParam
+func processParameter(pkg *packages.Package, param *ast.Ident, iTracker *importTracker) (specParam, error) {
+	var specParamIdent specParam
 
 	switch tpe := pkg.TypesInfo.TypeOf(param).(type) {
 	case *types.Named:
-		specParam = SpecParam{
+		specParamIdent = specParam{
 			Type: param.Name,
 		}
 
 		if tpe.Obj().Pkg() != nil {
-			specParam.Import = tpe.Obj().Pkg().Path()
-			specParam.ImportName = tpe.Obj().Pkg().Name()
+			specParamIdent.Import = tpe.Obj().Pkg().Path()
+			specParamIdent.ImportName = tpe.Obj().Pkg().Name()
 		}
 
 	case *types.Basic:
-		specParam = SpecParam{
+		specParamIdent = specParam{
 			Type:   param.Name,
 			Import: "",
 		}
 	default:
 		tt := pkg.TypesInfo.TypeOf(param)
 		fmt.Println(tt)
-		return SpecParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(param))
+		return specParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(param))
 	}
 
-	specParam.ImportName = iTracker.GetImportAlias(specParam.ImportName, specParam.Import)
-	if specParam.Import == pkg.ID {
-		specParam.Import = ""
+	specParamIdent.ImportName = iTracker.getImportAlias(specParamIdent.ImportName, specParamIdent.Import)
+	if specParamIdent.Import == pkg.ID {
+		specParamIdent.Import = ""
 	}
 
-	return specParam, nil
+	return specParamIdent, nil
 
 }
