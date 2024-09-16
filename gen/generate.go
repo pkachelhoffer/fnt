@@ -7,6 +7,8 @@ import (
 	"golang.org/x/tools/imports"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"text/template"
 )
 
@@ -34,6 +36,10 @@ func generateFile(spec spec, it importTracker, target string) error {
 		return fmt.Errorf("executing template: %s", err.Error())
 	}
 
+	if target == "" {
+		target = getFileOutputName(spec.FileName)
+	}
+
 	imports.LocalPrefix = spec.Package
 	src, err := imports.Process(target, buf.Bytes(), nil)
 	if err != nil {
@@ -49,13 +55,34 @@ func generateFile(spec spec, it importTracker, target string) error {
 	return nil
 }
 
-func PerformTypeGeneration(path string, interfaceName string, targetPackageName string, outputFile string) error {
-	spec, iTracker, err := getInterfaceSpec(path, interfaceName, targetPackageName)
+func getFileOutputName(sourceFilePath string) string {
+	//if filePath == "" {
+	//	return "", fmt.Errorf("failed getting package filename")
+	//}
+
+	folder := filepath.Dir(sourceFilePath)
+	fileNameWithExt := filepath.Base(sourceFilePath)
+	ext := filepath.Ext(fileNameWithExt)
+	fileNameWithoutExt := strings.TrimSuffix(fileNameWithExt, ext)
+
+	return fmt.Sprintf("%s/%s_gen%s", folder, fileNameWithoutExt, ext)
+}
+
+func PerformTypeGeneration(inputPath string, interfaceName string, targetPackageName string, outputFile string) error {
+	var err error
+	if inputPath == "" {
+		inputPath, err = os.Getwd()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	s, iTracker, err := getInterfaceSpec(inputPath, interfaceName, targetPackageName)
 	if err != nil {
 		return fmt.Errorf("getting interface spec: %s", err)
 	}
 
-	err = generateFile(spec, iTracker, outputFile)
+	err = generateFile(s, iTracker, outputFile)
 	if err != nil {
 		return fmt.Errorf("generating file: %s", err)
 	}

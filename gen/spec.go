@@ -12,6 +12,7 @@ type spec struct {
 	Functions   []specFunction
 	Package     string
 	PackageName string
+	FileName    string
 }
 
 type specFunction struct {
@@ -31,7 +32,7 @@ func getInterfaceSpec(path string, interfaceName string, targetPackageName strin
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:  path,
 	}
-	pkgs, err := packages.Load(cfg, "./...")
+	pkgs, err := packages.Load(cfg, path)
 	if err != nil {
 		return spec{}, importTracker{}, fmt.Errorf("error loading package: %s", err)
 	}
@@ -65,7 +66,11 @@ func getInterfaceSpec(path string, interfaceName string, targetPackageName strin
 
 					intSpec.Name = typeSpec.Name.Name
 					intSpec.PackageName = targetPackageName
+					if intSpec.PackageName == "" {
+						intSpec.PackageName = pkg.Types.Name()
+					}
 					intSpec.Package = pkg.ID
+					intSpec.FileName = getFileName(pkg, syntax)
 
 					iTracker := newImportTracker(intSpec.Package)
 
@@ -90,6 +95,21 @@ func getInterfaceSpec(path string, interfaceName string, targetPackageName strin
 	}
 
 	return spec{}, importTracker{}, fmt.Errorf("invalid interface specified or not found: %s", interfaceName)
+}
+
+func getFileName(pkg *packages.Package, syntax *ast.File) string {
+	var filePath string
+	ast.Inspect(syntax, func(n ast.Node) bool {
+		if typeSpec, ok := n.(*ast.TypeSpec); ok {
+			if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+				position := pkg.Fset.Position(typeSpec.Pos())
+				filePath = position.Filename
+			}
+		}
+		return true
+	})
+
+	return filePath
 }
 
 func processFunction(pkg *packages.Package, field *ast.Field, iTracker *importTracker) (specFunction, error) {

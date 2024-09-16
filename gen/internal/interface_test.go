@@ -1,28 +1,12 @@
-package testing
+package internal
 
 import (
 	"context"
-	"fnt/testing/packone/packmain"
-	p2 "fnt/testing/packone/packmain"
+	"fnt/gen"
+	"fnt/gen/internal/packone/packmain"
+	p2 "fnt/gen/internal/packtwo/packmain"
+	"testing"
 )
-
-//go:generate main
-
-type TestInterface interface {
-	PerformRequest(ctx context.Context, req Request, val1 int, val2 string) (Response, error)
-	InterfaceParam(ctx context.Context, perf performer)
-	Alias(ctx context.Context, pack1 packmain.PackItem, pack2 p2.PackItem) (packmain.PackItem, p2.PackItem)
-}
-
-type Request struct {
-}
-
-type Response struct {
-}
-
-type performer interface {
-	DoSomething()
-}
 
 type TestInterfaceImplementation struct {
 }
@@ -46,4 +30,11 @@ func DoSomething() {
 
 func processTestInterface(fnPerformRequest PerformRequest, fnInterfaceParam InterfaceParam, fnAlias Alias) {
 
+}
+
+func TestGetInterface(t *testing.T) {
+	err := gen.PerformTypeGeneration("", "TestInterface", "", "")
+	if err != nil {
+		t.Fatalf("err: %e", err)
+	}
 }
