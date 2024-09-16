@@ -1,4 +1,4 @@
-module fnt
+module github.com/pkachelhoffer/fnt
 
 go 1.22.3
 

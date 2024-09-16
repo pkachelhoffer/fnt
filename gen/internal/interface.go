@@ -2,8 +2,8 @@ package internal
 
 import (
 	"context"
-	"fnt/gen/internal/packone/packmain"
-	p2 "fnt/gen/internal/packtwo/packmain"
+	"github.com/pkachelhoffer/fnt/gen/internal/packone/packmain"
+	p2 "github.com/pkachelhoffer/fnt/gen/internal/packtwo/packmain"
 )
 
 type TestInterface interface {

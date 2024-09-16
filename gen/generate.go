@@ -56,10 +56,6 @@ func generateFile(spec spec, it importTracker, target string) error {
 }
 
 func getFileOutputName(sourceFilePath string) string {
-	//if filePath == "" {
-	//	return "", fmt.Errorf("failed getting package filename")
-	//}
-
 	folder := filepath.Dir(sourceFilePath)
 	fileNameWithExt := filepath.Base(sourceFilePath)
 	ext := filepath.Ext(fileNameWithExt)

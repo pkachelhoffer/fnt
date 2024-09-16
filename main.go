@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fnt/gen"
+	"github.com/pkachelhoffer/fnt/gen"
 	"log"
 )
 

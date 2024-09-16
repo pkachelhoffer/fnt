@@ -3,11 +3,11 @@ package internal
 import (
 	"context"
 
-	"fnt/gen/internal/packone/packmain"
+	"github.com/pkachelhoffer/fnt/gen/internal/packone/packmain"
 
-	packmain_1 "fnt/gen/internal/packtwo/packmain"
+	packmain_1 "github.com/pkachelhoffer/fnt/gen/internal/packtwo/packmain"
 
-	packmain_2 "fnt/gen/internal/packtwo/packmain"
+	packmain_2 "github.com/pkachelhoffer/fnt/gen/internal/packtwo/packmain"
 )
 
 type (
