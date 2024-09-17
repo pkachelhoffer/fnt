@@ -23,14 +23,20 @@ type specFunction struct {
 
 type specParam struct {
 	Type       string
-	Import     string
 	ImportName string
 }
 
-type identDesc struct {
+type identType struct {
 	ident     *ast.Ident
 	isPointer bool
 	isArray   bool
+}
+
+type identDesc struct {
+	primaryIdentType identType
+
+	// Maps identities will have two -> Key and Value. The subIdentityType refers to the Map value
+	subIdentityType identType
 }
 
 func getInterfaceSpec(path string, interfaceName string, targetPackageName string) (spec, importTracker, error) {
@@ -130,14 +136,9 @@ func processFunction(pkg *packages.Package, field *ast.Field, iTracker *importTr
 
 	// Process parameters
 	for _, p := range fnc.Params.List {
-		ident, ok := getIdent(p)
-		if !ok {
-			return specFunction{}, fmt.Errorf("failed getting type identity: %s", p.Type)
-		}
-
-		sp, err := processParameter(pkg, ident, iTracker)
+		sp, err := processField(pkg, p, iTracker)
 		if err != nil {
-			return specFunction{}, err
+			return specFunction{}, fmt.Errorf("process field: %s", err.Error())
 		}
 
 		sf.Params = append(sf.Params, sp)
@@ -146,28 +147,37 @@ func processFunction(pkg *packages.Package, field *ast.Field, iTracker *importTr
 	// Process returns
 	if fnc.Results != nil {
 		for _, p := range fnc.Results.List {
-			ident, ok := getIdent(p)
-			if !ok {
-				return specFunction{}, fmt.Errorf("failed getting type identity: %s", p.Type)
-			}
-
-			ret, err := processParameter(pkg, ident, iTracker)
+			sp, err := processField(pkg, p, iTracker)
 			if err != nil {
-				return specFunction{}, err
+				return specFunction{}, fmt.Errorf("process field: %s", err.Error())
 			}
 
-			sf.Returns = append(sf.Returns, ret)
+			sf.Returns = append(sf.Returns, sp)
 		}
 	}
 
 	return sf, nil
 }
 
+func processField(pkg *packages.Package, p *ast.Field, iTracker *importTracker) (specParam, error) {
+	ident, ok := getIdent(p)
+	if !ok {
+		return specParam{}, fmt.Errorf("failed getting type identity: %s", p.Type)
+	}
+
+	sp, err := processParameter(pkg, ident, iTracker)
+	if err != nil {
+		return specParam{}, err
+	}
+
+	return sp, nil
+}
+
 func getIdent(field *ast.Field) (identDesc, bool) {
 	switch tpe := field.Type.(type) {
 	case *ast.Ident:
 		return identDesc{
-			ident: tpe,
+			primaryIdentType: identType{ident: tpe},
 		}, true
 	case ast.Expr:
 		return convertExpr(tpe)
@@ -179,71 +189,111 @@ func convertExpr(expr ast.Expr) (identDesc, bool) {
 	switch tpeExpr := expr.(type) {
 	case *ast.Ident:
 		return identDesc{
-			ident: tpeExpr,
+			primaryIdentType: identType{ident: tpeExpr},
 		}, true
 	case *ast.SelectorExpr:
 		return identDesc{
-			ident: tpeExpr.Sel,
+			primaryIdentType: identType{ident: tpeExpr.Sel},
 		}, true
 	case *ast.StarExpr:
 		identTpe, ok := tpeExpr.X.(*ast.Ident)
 		if ok {
 			return identDesc{
-				ident:     identTpe,
-				isPointer: true,
+				primaryIdentType: identType{ident: identTpe, isPointer: true},
 			}, true
 		}
 	case *ast.ArrayType:
 		id, ok := convertExpr(tpeExpr.Elt)
 		if ok {
 			return identDesc{
-				ident:     id.ident,
-				isPointer: id.isPointer,
-				isArray:   true,
+				primaryIdentType: identType{
+					ident:     id.primaryIdentType.ident,
+					isPointer: id.primaryIdentType.isPointer,
+					isArray:   true},
 			}, true
+		}
+	case *ast.MapType:
+		primary, ok := convertExpr(tpeExpr.Key)
+		if ok {
+			secondary, ok := convertExpr(tpeExpr.Value)
+			if ok {
+				return identDesc{
+					primaryIdentType: primary.primaryIdentType,
+					subIdentityType:  secondary.primaryIdentType,
+				}, ok
+			}
 		}
 	}
 
 	return identDesc{}, false
 }
 
-func processParameter(pkg *packages.Package, ident identDesc, iTracker *importTracker) (specParam, error) {
-	var specParamIdent specParam
+func getIdentityType(pkg *packages.Package, identType identType, iTracker *importTracker) (specParam, error) {
+	var (
+		specParamIdent specParam
+		imp            string
+	)
 
-	switch tpe := pkg.TypesInfo.TypeOf(ident.ident).(type) {
+	switch tpe := pkg.TypesInfo.TypeOf(identType.ident).(type) {
 	case *types.Named:
 		specParamIdent = specParam{
-			Type: ident.ident.Name,
+			Type: identType.ident.Name,
 		}
 
 		if tpe.Obj().Pkg() != nil {
-			specParamIdent.Import = tpe.Obj().Pkg().Path()
+			imp = tpe.Obj().Pkg().Path()
 			specParamIdent.ImportName = tpe.Obj().Pkg().Name()
 		}
 
 	case *types.Basic:
 		specParamIdent = specParam{
-			Type:   ident.ident.Name,
-			Import: "",
+			Type: identType.ident.Name,
 		}
 	default:
-		return specParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(ident.ident))
+		return specParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(identType.ident))
 	}
 
-	specParamIdent.ImportName = iTracker.getImportAlias(specParamIdent.ImportName, specParamIdent.Import)
-	if specParamIdent.Import == pkg.ID {
-		specParamIdent.Import = ""
-	}
+	specParamIdent.ImportName = iTracker.getImportAlias(specParamIdent.ImportName, imp)
 
 	// If parameter is pointer type, add star
-	if ident.isPointer {
+	if identType.isPointer {
 		specParamIdent.Type = fmt.Sprintf("*%s", specParamIdent.Type)
 	}
 
 	// Add brackets if array
-	if ident.isArray {
+	if identType.isArray {
 		specParamIdent.Type = fmt.Sprintf("[]%s", specParamIdent.Type)
 	}
 
 	return specParamIdent, nil
+}
+
+func processParameter(pkg *packages.Package, identDesc identDesc, iTracker *importTracker) (specParam, error) {
+	var finalSpecParam specParam
+
+	primaryParamIdent, err := getIdentityType(pkg, identDesc.primaryIdentType, iTracker)
+	if err != nil {
+		return specParam{}, err
+	}
+
+	if identDesc.subIdentityType.ident == nil {
+		finalSpecParam = primaryParamIdent
+	} else {
+		subParamIndent, err := getIdentityType(pkg, identDesc.subIdentityType, iTracker)
+		if err != nil {
+			return specParam{}, err
+		}
+		type1 := primaryParamIdent.Type
+		if primaryParamIdent.ImportName != "" {
+			type1 = fmt.Sprintf("%s.%s", primaryParamIdent.ImportName, primaryParamIdent.Type)
+		}
+		type2 := subParamIndent.Type
+		if subParamIndent.ImportName != "" {
+			type2 = fmt.Sprintf("%s.%s", subParamIndent.ImportName, subParamIndent.Type)
+		}
+		// It's a map
+		finalSpecParam.Type = fmt.Sprintf("map[%s]%s", type1, type2)
+	}
+
+	return finalSpecParam, nil
 }

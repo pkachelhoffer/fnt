@@ -30,6 +30,12 @@ func (it *importTracker) getImportAlias(importName string, imp string) string {
 	var generatedAlias string
 
 	for _, is := range it.Imports {
+		if imp == is.Import {
+			return is.Alias
+		}
+	}
+
+	for _, is := range it.Imports {
 		if importName == is.ImportName {
 			if imp == is.Import {
 				return is.Alias

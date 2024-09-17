@@ -12,6 +12,7 @@ type TestInterface interface {
 	Alias(ctx context.Context, pack1 packmain.PackItem, pack2 p2.PackItem) (packmain.PackItem, p2.PackItem)
 	Pointers(req *Request, id *int) *Response
 	Arrays(reqsPoint []*Request, reqs []Request, numbers []int) []int
+	Maps(mp1 map[int]*Response, mp2 map[int]Response, mp4 map[packmain.PackItem]p2.PackItem) map[string]int
 }
 
 type Request struct {
