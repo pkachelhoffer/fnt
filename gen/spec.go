@@ -30,6 +30,7 @@ type specParam struct {
 type identDesc struct {
 	ident     *ast.Ident
 	isPointer bool
+	isArray   bool
 }
 
 func getInterfaceSpec(path string, interfaceName string, targetPackageName string) (spec, importTracker, error) {
@@ -169,22 +170,40 @@ func getIdent(field *ast.Field) (identDesc, bool) {
 			ident: tpe,
 		}, true
 	case ast.Expr:
-		switch tpeExpr := tpe.(type) {
-		case *ast.SelectorExpr:
-			return identDesc{
-				ident: tpeExpr.Sel,
-			}, true
-		case *ast.StarExpr:
-			identTpe, ok := tpeExpr.X.(*ast.Ident)
-			if ok {
-				return identDesc{
-					ident:     identTpe,
-					isPointer: true,
-				}, true
-			}
-		}
-
+		return convertExpr(tpe)
 	}
+	return identDesc{}, false
+}
+
+func convertExpr(expr ast.Expr) (identDesc, bool) {
+	switch tpeExpr := expr.(type) {
+	case *ast.Ident:
+		return identDesc{
+			ident: tpeExpr,
+		}, true
+	case *ast.SelectorExpr:
+		return identDesc{
+			ident: tpeExpr.Sel,
+		}, true
+	case *ast.StarExpr:
+		identTpe, ok := tpeExpr.X.(*ast.Ident)
+		if ok {
+			return identDesc{
+				ident:     identTpe,
+				isPointer: true,
+			}, true
+		}
+	case *ast.ArrayType:
+		id, ok := convertExpr(tpeExpr.Elt)
+		if ok {
+			return identDesc{
+				ident:     id.ident,
+				isPointer: id.isPointer,
+				isArray:   true,
+			}, true
+		}
+	}
+
 	return identDesc{}, false
 }
 
@@ -219,6 +238,11 @@ func processParameter(pkg *packages.Package, ident identDesc, iTracker *importTr
 	// If parameter is pointer type, add star
 	if ident.isPointer {
 		specParamIdent.Type = fmt.Sprintf("*%s", specParamIdent.Type)
+	}
+
+	// Add brackets if array
+	if ident.isArray {
+		specParamIdent.Type = fmt.Sprintf("[]%s", specParamIdent.Type)
 	}
 
 	return specParamIdent, nil
