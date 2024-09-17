@@ -27,6 +27,11 @@ type specParam struct {
 	ImportName string
 }
 
+type identDesc struct {
+	ident     *ast.Ident
+	isPointer bool
+}
+
 func getInterfaceSpec(path string, interfaceName string, targetPackageName string) (spec, importTracker, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
@@ -157,26 +162,39 @@ func processFunction(pkg *packages.Package, field *ast.Field, iTracker *importTr
 	return sf, nil
 }
 
-func getIdent(field *ast.Field) (*ast.Ident, bool) {
+func getIdent(field *ast.Field) (identDesc, bool) {
 	switch tpe := field.Type.(type) {
 	case *ast.Ident:
-		return tpe, true
+		return identDesc{
+			ident: tpe,
+		}, true
 	case ast.Expr:
-		exp, ok := tpe.(*ast.SelectorExpr)
-		if ok {
-			return exp.Sel, true
+		switch tpeExpr := tpe.(type) {
+		case *ast.SelectorExpr:
+			return identDesc{
+				ident: tpeExpr.Sel,
+			}, true
+		case *ast.StarExpr:
+			identTpe, ok := tpeExpr.X.(*ast.Ident)
+			if ok {
+				return identDesc{
+					ident:     identTpe,
+					isPointer: true,
+				}, true
+			}
 		}
+
 	}
-	return nil, false
+	return identDesc{}, false
 }
 
-func processParameter(pkg *packages.Package, param *ast.Ident, iTracker *importTracker) (specParam, error) {
+func processParameter(pkg *packages.Package, ident identDesc, iTracker *importTracker) (specParam, error) {
 	var specParamIdent specParam
 
-	switch tpe := pkg.TypesInfo.TypeOf(param).(type) {
+	switch tpe := pkg.TypesInfo.TypeOf(ident.ident).(type) {
 	case *types.Named:
 		specParamIdent = specParam{
-			Type: param.Name,
+			Type: ident.ident.Name,
 		}
 
 		if tpe.Obj().Pkg() != nil {
@@ -186,13 +204,11 @@ func processParameter(pkg *packages.Package, param *ast.Ident, iTracker *importT
 
 	case *types.Basic:
 		specParamIdent = specParam{
-			Type:   param.Name,
+			Type:   ident.ident.Name,
 			Import: "",
 		}
 	default:
-		tt := pkg.TypesInfo.TypeOf(param)
-		fmt.Println(tt)
-		return specParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(param))
+		return specParam{}, fmt.Errorf("unexpected field type: %s", pkg.TypesInfo.TypeOf(ident.ident))
 	}
 
 	specParamIdent.ImportName = iTracker.getImportAlias(specParamIdent.ImportName, specParamIdent.Import)
@@ -200,6 +216,10 @@ func processParameter(pkg *packages.Package, param *ast.Ident, iTracker *importT
 		specParamIdent.Import = ""
 	}
 
-	return specParamIdent, nil
+	// If parameter is pointer type, add star
+	if ident.isPointer {
+		specParamIdent.Type = fmt.Sprintf("*%s", specParamIdent.Type)
+	}
 
+	return specParamIdent, nil
 }

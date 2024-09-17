@@ -11,6 +11,10 @@ import (
 type TestInterfaceImplementation struct {
 }
 
+func (t TestInterfaceImplementation) Pointers(req *Request, id *int) *Response {
+	panic("implement me")
+}
+
 func (t TestInterfaceImplementation) PerformRequest(ctx context.Context, req Request, val1 int, val2 string) (Response, error) {
 	panic("implement me")
 }
@@ -23,12 +27,14 @@ func (t TestInterfaceImplementation) Alias(ctx context.Context, pack1 packmain.P
 	panic("implement me")
 }
 
+var _ = TestInterface(TestInterfaceImplementation{})
+
 func DoSomething() {
 	imp := TestInterfaceImplementation{}
-	processTestInterface(imp.PerformRequest, imp.InterfaceParam, imp.Alias)
+	processTestInterface(imp.PerformRequest, imp.InterfaceParam, imp.Alias, imp.Pointers)
 }
 
-func processTestInterface(fnPerformRequest PerformRequest, fnInterfaceParam InterfaceParam, fnAlias Alias) {
+func processTestInterface(fnPerformRequest PerformRequest, fnInterfaceParam InterfaceParam, fnAlias Alias, fnPointers Pointers) {
 
 }
 

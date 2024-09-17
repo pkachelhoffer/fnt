@@ -10,6 +10,7 @@ type TestInterface interface {
 	PerformRequest(ctx context.Context, req Request, val1 int, val2 string) (Response, error)
 	InterfaceParam(ctx context.Context, perf performer)
 	Alias(ctx context.Context, pack1 packmain.PackItem, pack2 p2.PackItem) (packmain.PackItem, p2.PackItem)
+	Pointers(req *Request, id *int) *Response
 }
 
 type Request struct {
